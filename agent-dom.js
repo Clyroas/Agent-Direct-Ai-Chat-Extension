@@ -42,6 +42,24 @@
     const button = [...form.querySelectorAll('button[aria-haspopup="dialog"]:not([aria-label])')].find(el => visible(el) && el.querySelector('span.truncate'));
     return button ? normalize(button.querySelector('span.truncate').textContent).slice(0, 120) : '';
   }
+  function preferenceContainer(el) {
+    if (!el || !el.ownerDocument) return null;
+    let current = el;
+    while (current && current.nodeType === 1 && current !== el.ownerDocument.body &&
+           current.tagName !== 'OL' && current.tagName !== 'MAIN' && !current.hasAttribute('data-chat-message-id')) {
+      if (current.closest && current.closest(DIRECT_OUTSIDE)) break;
+      const headings = current.querySelectorAll('h3, h2, h1, p');
+      for (const heading of headings) {
+        if (/which response do you prefer|choose the response you would like to continue|which response is better/i.test(normalize(heading.textContent || ''))) {
+          if (current.querySelector('[aria-roledescription="slide"], .bg-surface-primary, .prose')) {
+            return current;
+          }
+        }
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
   function modelOf(card) { return normalize(card.querySelector('.sticky span.font-mono span.truncate')?.textContent || '').slice(0, 120); }
   // Arena's Direct list is an <ol class="flex-col-reverse"> holding messages NEWEST FIRST (its thread
   // array starts with the latest message), so DOM order is the reverse of reading order. Rows are
@@ -68,8 +86,9 @@
     const users = new Set([...doc.querySelectorAll('.bg-surface-raised')]
       .filter(bubble => bubble.querySelector('.prose') && !bubble.closest(DIRECT_OUTSIDE))
       .map(bubble => bubble.closest('.self-end') || bubble));
-    const cards = [...doc.querySelectorAll('.sticky span.font-mono > span.truncate')]
+    const rawCards = [...doc.querySelectorAll('.sticky span.font-mono > span.truncate')]
       .filter(name => !name.closest(DIRECT_OUTSIDE)).map(name => name.closest('.sticky')?.parentElement).filter(Boolean);
+    const cards = rawCards.map(card => preferenceContainer(card) || card);
     let all = [...new Set([...users, ...cards])].filter(el => visible(el));
     // Arena renders the conversation inside one <ol>. When that list is present, anything outside it
     // (a page header, a preview, a panel that reuses the card styling) is not a message row.
@@ -103,8 +122,8 @@
       SHIMMER.test(normalize(el.textContent)) && visible(el));
   }
   function directFeedback(card) {
-    return [...card.querySelectorAll('button[aria-label]')].some(el => visible(el) &&
-      /^(?:like this response|liked|dislike this response|disliked)$/i.test(normalize(el.getAttribute('aria-label'))));
+    return [...card.querySelectorAll('button[aria-label], button[title], button[data-slot="tooltip-trigger"]')].some(el => visible(el) &&
+      /^(?:like|liked|dislike|disliked|copy|good|bad|thumbs|retry|regenerate|share|edit|response)/i.test(normalize(el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '')));
   }
   // Arena renders failures with a "Copy trace ID" error block and stops with "Generation stopped".
   function directProblem(card) {
@@ -232,7 +251,12 @@
     return list;
   }
   function ended(row) {
-    if (directEls.has(row)) return !directPending(row) && !running(row.ownerDocument) && (directFeedback(row) || !!answerText(row));
+    if (directEls.has(row)) {
+      if (running(row.ownerDocument)) return false;
+      const text = answerText(row);
+      if (!text) return false;
+      return directFeedback(row) || !directPending(row);
+    }
     // Observed in the user's completed Agent reply. Copy and bottom markers alone are insufficient.
     return [...row.querySelectorAll('[aria-label]')].some(el =>
       !el.closest('.prose,.not-prose') && visible(el) && /\bResponse ended\b/i.test(el.getAttribute('aria-label') || ''));
@@ -518,6 +542,36 @@
     }
     if (new Set(found.map(q => q.fingerprint)).size !== found.length)
       fail('AMBIGUOUS_QUESTION', 'Duplicate clarification cards were found. Answer them in Arena; no option was selected.');
+
+    const prefBox = row.querySelector ? (preferenceContainer(row) || (/which response do you prefer|choose the response you would like to continue/i.test(normalize(row.innerText || row.textContent)) ? row : null)) : null;
+    if (prefBox && visible(prefBox)) {
+      const slides = [...prefBox.querySelectorAll('[aria-roledescription="slide"], .bg-surface-primary')].filter(el => visible(el) && el.querySelector('.prose'));
+      const uniqueSlides = [...new Set(slides.map(s => s.closest('[aria-roledescription="slide"]') || s))];
+      if (uniqueSlides.length >= 2) {
+        const options = [];
+        const buttons = [];
+        uniqueSlides.slice(0, 4).forEach((slide, idx) => {
+          const nameEl = slide.querySelector('span.font-mono span.truncate') || slide.querySelector('.truncate');
+          const label = normalize(nameEl?.textContent || `Response ${String.fromCharCode(65 + idx)}`);
+          const proseText = normalize(slide.querySelector('.prose')?.textContent || '');
+          const desc = proseText.length > 200 ? proseText.slice(0, 197) + '…' : proseText;
+          const target = slide.querySelector('button:not([aria-label]), [role="button"]') || slide.querySelector('.bg-surface-primary') || slide;
+          options.push({ label, description: desc, disabled: !enabled(target), checked: false });
+          buttons.push(target);
+        });
+        if (options.length >= 2) {
+          const data = {
+            rowId: (row.getAttribute ? row.getAttribute('data-chat-message-id') : null) || 'pref',
+            question: 'Which response do you prefer?',
+            options,
+            custom: false,
+            readOnly: false,
+            reason: ''
+          };
+          found.push({ root: prefBox, group: prefBox, buttons, input: null, submit: null, data, fingerprint: JSON.stringify(data) });
+        }
+      }
+    }
     return found;
   }
   // Visible thinking label only (e.g. "Thinking…", "Thought for 12s"). The collapsed body is never
