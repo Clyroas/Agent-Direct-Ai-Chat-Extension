@@ -637,9 +637,17 @@
     const user = users[0];
     if (!promptMatches(tx, answerText(user.el)))
       fail('PROMPT_MISMATCH', 'Arena showed a different user message. Capture stopped. Check the tab; the extension will not retry.');
-    if (tx.userId && tx.userId !== user.id)
+    if (tx.userId && tx.userId !== user.id && (!tx.userId.startsWith('direct-') || user.id.split('-').slice(0, 2).join('-') !== tx.userId.split('-').slice(0, 2).join('-')))
       fail('CONVERSATION_CHANGED', 'The submitted message ID changed. Capture stopped.');
-    if (tx.seenRows?.some((id, index) => added[index]?.id !== id))
+    const sameRowId = (seen, curr) => {
+      if (!seen || !curr) return false;
+      if (seen === curr) return true;
+      if (seen.startsWith('direct-') && curr.startsWith('direct-')) {
+        return seen.split('-').slice(0, 2).join('-') === curr.split('-').slice(0, 2).join('-');
+      }
+      return false;
+    };
+    if (tx.seenRows?.some((id, index) => !sameRowId(id, added[index]?.id)))
       fail('CONVERSATION_CHANGED', 'Tracked turn rows were removed or reordered. Live capture stopped.');
     const assistants = added.slice(1).filter(r => !r.user);
     const classified = assistants.map(row => ({ row, questions: questionsFor(row.el), tools: toolActivity(row.el), text: answerText(row.el) }));
