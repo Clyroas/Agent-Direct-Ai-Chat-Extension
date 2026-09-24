@@ -122,8 +122,8 @@
       SHIMMER.test(normalize(el.textContent)) && visible(el));
   }
   function directFeedback(card) {
-    return [...card.querySelectorAll('button[aria-label]')].some(el => visible(el) &&
-      /^(?:like this response|liked|dislike this response|disliked)$/i.test(normalize(el.getAttribute('aria-label'))));
+    return [...card.querySelectorAll('button[aria-label], button[title], button[data-slot="tooltip-trigger"]')].some(el => visible(el) &&
+      /^(?:like|liked|dislike|disliked|copy|good|bad|thumbs|retry|regenerate|share|edit|response)/i.test(normalize(el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '')));
   }
   // Arena renders failures with a "Copy trace ID" error block and stops with "Generation stopped".
   function directProblem(card) {
@@ -251,7 +251,12 @@
     return list;
   }
   function ended(row) {
-    if (directEls.has(row)) return !directPending(row) && !running(row.ownerDocument) && (directFeedback(row) || !!answerText(row));
+    if (directEls.has(row)) {
+      if (running(row.ownerDocument)) return false;
+      const text = answerText(row);
+      if (!text) return false;
+      return directFeedback(row) || !directPending(row);
+    }
     // Observed in the user's completed Agent reply. Copy and bottom markers alone are insufficient.
     return [...row.querySelectorAll('[aria-label]')].some(el =>
       !el.closest('.prose,.not-prose') && visible(el) && /\bResponse ended\b/i.test(el.getAttribute('aria-label') || ''));
