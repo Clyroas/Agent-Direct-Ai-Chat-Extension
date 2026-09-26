@@ -126,6 +126,11 @@ select option { background: var(--surface); color: var(--label); }
 }
 .toolbar-button:hover:not(:disabled) { background: var(--fill); filter: none; }
 .toolbar-button svg { width: 19px; height: 19px; }
+.toolbar-reconnect { color: var(--secondary); }
+.toolbar-reconnect:hover:not(:disabled), .toolbar-reconnect:focus-visible { color: var(--accent); }
+.toolbar-row:has(.status[data-state="error"]) .toolbar-reconnect,
+.toolbar-row:has(.status[data-state="reconnecting"]) .toolbar-reconnect { color: var(--orange); }
+.toolbar-row:has(.status[data-state="reconnecting"]) .toolbar-reconnect svg { animation: spin 1.2s linear infinite; }
 .status-pill {
   flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px; border-radius: 999px;
   background: var(--fill); color: var(--label); font-size: 12px; font-weight: 500; max-width: 46vw;

@@ -100,7 +100,7 @@ function render() {
   $('prepare').textContent = staged.length ? `Send to Arena · ${staged.length} file${staged.length > 1 ? 's' : ''}` : 'Send to Arena';
   $('prepare').title = staged.length ? 'Send this message together with the staged files' : '';
   $('prompt').placeholder = state === 'ready' ? 'Type a message to send to Arena…' : state === 'reconnecting' && !pending ? 'Reconnecting to Arena… you can keep typing' : pending?.live?.questions?.length ? 'Answer the question cards above to continue…' : pending ? 'Arena is working on this task…' : 'Connect your Arena tab to start…';
-  for (const id of ['refresh', 'open', 'open-direct-tab', 'focus', 'reconnect', 'disconnect', 'cancel', 'float-window']) $(id).disabled = busy;
+  for (const id of ['refresh', 'open', 'open-direct-tab', 'focus', 'reconnect', 'toolbar-reconnect', 'disconnect', 'cancel', 'float-window']) $(id).disabled = busy;
   $('pending').hidden = !pending;
   $('connection-info').hidden = !tab;
   $('connection-summary-text').textContent = tab ? `Tab ${tab.id} · ${tab.title || 'Arena'}` : 'Choose your Arena tab';
@@ -515,13 +515,18 @@ action('disconnect', async () => {
   if (!await askClear('Disconnect and clear this panel? Any request already accepted by Arena may continue there.')) return;
   clear(); await refresh(); notice('Disconnected. The local session was cleared; Arena history is unchanged.');
 });
-action('reconnect', async () => {
+// Settings → Reconnect and the small toolbar button share one flow: confirm, clear the local
+// session, and re-open setup with the same Arena tab preselected. With no connected tab,
+// clear() opens the settings sheet for a fresh setup.
+const reconnectSession = async () => {
   if (!await askClear('Reconnect and clear this local session? Check Arena before resending any accepted prompt.')) return;
   const id = tab?.id; clear();
   if (!Number.isInteger(id)) return;
   notice('Session cleared. Check the selected Arena tab and tick the confirmations again, then connect.');
   await refresh(); $('tabs').value = String(id);
-});
+};
+action('reconnect', reconnectSession);
+action('toolbar-reconnect', reconnectSession);
 action('prepare', async () => {
   if (state !== 'ready' || !client?.ready || pending || !tab) throw new Error('Connect and verify the Agent controls before sending.');
   const text = $('prompt').value.trim();
